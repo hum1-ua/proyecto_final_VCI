@@ -3,100 +3,77 @@ import json
 import cv2
 import numpy as np
 
-IMAGES_PATH = "data/images"
-OUTPUT_PATH = "data/preprocessed"
-SPLIT_PATH = "data/split.json"
+TRAIN_DIR = "data/train"
+TEST_DIR = "data/test"
+PARAMS_PATH = "data/preprocess_params.json"
 
 
-def stratified_split(
-    images_dir: str, test_ratio: float = 0.3, seed: int = 42
-) -> tuple[list[str], list[str]]:
-    """Splits image filenames into stratified train/test lists."""
-    rng = np.random.default_rng(seed)
-    files = sorted(f for f in os.listdir(images_dir) if f.endswith(".png"))
-
-    green_files = [f for f in files if int(f.split("_")[1].split(".")[0]) < 66]
-    red_files = [f for f in files if int(f.split("_")[1].split(".")[0]) >= 66]
-
-    rng.shuffle(green_files)
-    rng.shuffle(red_files)
-
-    n_green_test = int(round(len(green_files) * test_ratio))
-    n_red_test = int(round(len(red_files) * test_ratio))
-
-    test_files = sorted(green_files[:n_green_test] + red_files[:n_red_test])
-    train_files = sorted(green_files[n_green_test:] + red_files[n_red_test:])
-    return train_files, test_files
+def load_preprocess_params(params_path: str = PARAMS_PATH) -> float:
+    """Loads the calibrated 99th percentile threshold for channel b* from JSON."""
+    with open(params_path, "r") as f:
+        params = json.load(f)
+    # Supports both new key name and legacy key if calibrate_threshold.py was not renamed
+    return float(params.get("b_p99_thresh", params.get("b_p98_thresh", 190.0)))
 
 
-def is_red_apple_tree(
-    img_lab_smooth: np.ndarray, a_thresh: float = 142.0, min_blob_area: int = 150
-) -> bool:
-    """Checks for a foreground red blob that is not dwarfed by yellow-green apples."""
-    a = img_lab_smooth[:, :, 1]
-    b = img_lab_smooth[:, :, 2]
-
-    # 1. Require at least one pure-red connected component (filters bark and distant dots)
-    red_candidates = (a > a_thresh).astype(np.uint8)
-    num_labels, _, stats, _ = cv2.connectedComponentsWithStats(red_candidates)
-    if num_labels <= 1 or np.max(stats[1:, cv2.CC_STAT_AREA]) < min_blob_area:
-        return False
-
-    # 2. Ensure red fruit area is not a minor background artifact in a green orchard
-    red_area = np.sum(a > 138.0)
-    green_apple_area = np.sum(b > 185.0)
-    return bool(red_area > 0.20 * green_apple_area)
-
-
-def preprocess_array(img_bgr: np.ndarray) -> tuple[np.ndarray, bool]:
-    """Converts BGR to LAB, smooths, selects a* or b* channel, and normalizes to [0, 255]."""
+def preprocess_array(img_bgr: np.ndarray, b_p99_thresh: float) -> tuple[np.ndarray, bool]:
+    """Selects channel a* or b* using the calibrated P99 threshold and normalizes to [0, 255]."""
     img_lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
     img_smooth = cv2.bilateralFilter(img_lab, d=9, sigmaColor=25, sigmaSpace=50)
 
-    red_tree = is_red_apple_tree(img_smooth)
+    a = img_smooth[:, :, 1].astype(np.float32)
+    b = img_smooth[:, :, 2].astype(np.float32)
 
-    if red_tree:
-        # Use a* channel: suppresses grass and green background apples
-        a = img_smooth[:, :, 1].astype(np.float32)
+    is_red_tree = bool(np.percentile(b, 99) < b_p99_thresh)
+
+    if is_red_tree:
+        # Red apple orchard: isolate red chromaticity in channel a*
         out = np.clip((a - 126.0) / (155.0 - 126.0), 0.0, 1.0) * 255.0
     else:
-        # Use b* channel: isolates yellow-green foreground apples
-        b = img_smooth[:, :, 2].astype(np.float32)
-        out = np.clip((b - 152.0) / (188.0 - 152.0), 0.0, 1.0) * 255.0
+        # Green apple orchard: isolate yellow-green chromaticity in channel b*
+        out = np.clip((b - 155.0) / (b_p99_thresh - 155.0), 0.0, 1.0) * 255.0
 
-    return out.astype(np.uint8), red_tree
+    return out.astype(np.uint8), is_red_tree
 
 
-def preprocess_image(img_path: str) -> np.ndarray:
+def preprocess_image(img_path: str, b_p99_thresh: float) -> np.ndarray:
     """Reads an image from disk and returns its single-channel preprocessed map."""
     img_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
     if img_bgr is None:
         raise FileNotFoundError(f"Could not read image: {img_path}")
-    processed, _ = preprocess_array(img_bgr)
+    processed, _ = preprocess_array(img_bgr, b_p99_thresh)
     return processed
 
 
-if __name__ == "__main__":
-    os.makedirs(OUTPUT_PATH, exist_ok=True)
-
-    train_files, test_files = stratified_split(IMAGES_PATH, test_ratio=0.3, seed=42)
-    with open(SPLIT_PATH, "w") as f:
-        json.dump({"train_files": train_files, "test_files": test_files}, f, indent=2)
+def process_split(split_dir: str, b_p99_thresh: float) -> None:
+    """Preprocesses all images in split_dir/images and saves them to split_dir/preprocessed."""
+    in_dir = os.path.join(split_dir, "images")
+    out_dir = os.path.join(split_dir, "preprocessed")
+    os.makedirs(out_dir, exist_ok=True)
 
     errors = []
-    for img_name in sorted(os.listdir(IMAGES_PATH)):
-        if not img_name.endswith(".png"):
+    count = 0
+
+    for fname in sorted(os.listdir(in_dir)):
+        if not fname.endswith(".png"):
             continue
 
-        in_path = os.path.join(IMAGES_PATH, img_name)
-        img_bgr = cv2.imread(in_path, cv2.IMREAD_COLOR)
-        processed, pred_red = preprocess_array(img_bgr)
-        cv2.imwrite(os.path.join(OUTPUT_PATH, img_name), processed)
+        img_bgr = cv2.imread(os.path.join(in_dir, fname), cv2.IMREAD_COLOR)
+        processed, pred_red = preprocess_array(img_bgr, b_p99_thresh)
+        cv2.imwrite(os.path.join(out_dir, fname), processed)
+        count += 1
 
-        img_id = int(img_name.split("_")[1].split(".")[0])
+        img_id = int(fname.split("_")[1].split(".")[0])
         true_red = img_id >= 66
         if pred_red != true_red:
-            errors.append((img_name, pred_red))
+            errors.append((fname, "pred_red" if pred_red else "pred_green"))
 
-    print(f"Split saved -> Train: {len(train_files)} | Test: {len(test_files)}")
-    print(f"Misclassified tree types: {len(errors)} -> {errors}")
+    print(f"[{split_dir}] Processed {count} images | Channel mismatches: {len(errors)} -> {errors}")
+
+
+if __name__ == "__main__":
+    b_thresh = load_preprocess_params(PARAMS_PATH)
+    print(f"Using calibrated threshold b* (P99) = {b_thresh:.2f}\n")
+
+    process_split(TRAIN_DIR, b_thresh)
+    process_split(TEST_DIR, b_thresh)
