@@ -12,8 +12,7 @@ def load_preprocess_params(params_path: str = PARAMS_PATH) -> float:
     """Loads the calibrated 99th percentile threshold for channel b* from JSON."""
     with open(params_path, "r") as f:
         params = json.load(f)
-    # Supports both new key name and legacy key if calibrate_threshold.py was not renamed
-    return float(params.get("b_p99_thresh", params.get("b_p98_thresh", 190.0)))
+    return float(params.get("b_p99_thresh"))
 
 
 def preprocess_array(img_bgr: np.ndarray, b_p99_thresh: float) -> tuple[np.ndarray, bool]:
@@ -21,20 +20,21 @@ def preprocess_array(img_bgr: np.ndarray, b_p99_thresh: float) -> tuple[np.ndarr
     img_lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
     img_smooth = cv2.bilateralFilter(img_lab, d=9, sigmaColor=25, sigmaSpace=50)
 
-    a = img_smooth[:, :, 1].astype(np.float32)
-    b = img_smooth[:, :, 2].astype(np.float32)
+    a = img_smooth[:, :, 1] #.astype(np.float32)
+    b = img_smooth[:, :, 2] #.astype(np.float32)
 
     is_red_tree = bool(np.percentile(b, 99) < b_p99_thresh)
 
     if is_red_tree:
         # Red apple orchard: isolate red chromaticity in channel a*
-        out = np.clip((a - 126.0) / (155.0 - 126.0), 0.0, 1.0) * 255.0
+        # out = np.clip((a - 126.0) / (155.0 - 126.0), 0.0, 1.0) * 255.0
+        return a.astype(np.uint8), is_red_tree
     else:
         # Green apple orchard: isolate yellow-green chromaticity in channel b*
-        out = np.clip((b - 155.0) / (b_p99_thresh - 155.0), 0.0, 1.0) * 255.0
-
-    return out.astype(np.uint8), is_red_tree
-
+        # out = np.clip((b - 155.0) / (b_p99_thresh - 155.0), 0.0, 1.0) * 255.0
+        return b.astype(np.uint8), is_red_tree
+    
+    # return out.astype(np.uint8), is_red_tree
 
 def preprocess_image(img_path: str, b_p99_thresh: float) -> np.ndarray:
     """Reads an image from disk and returns its single-channel preprocessed map."""
