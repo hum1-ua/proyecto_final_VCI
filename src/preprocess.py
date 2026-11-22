@@ -33,6 +33,9 @@ def preprocess_array(img_bgr: np.ndarray, b_p99_thresh: float) -> tuple[np.ndarr
         # Green apple orchard: isolate yellow-green chromaticity in channel b*
         # out = np.clip((b - 155.0) / (b_p99_thresh - 155.0), 0.0, 1.0) * 255.0
         return b.astype(np.uint8), is_red_tree
+
+
+    # TO DO: NORMALIZAR IMAGEN AL RANGO [0, 255]
     
     # return out.astype(np.uint8), is_red_tree
 
