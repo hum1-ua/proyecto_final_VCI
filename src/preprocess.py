@@ -28,16 +28,14 @@ def preprocess_array(img_bgr: np.ndarray, b_p99_thresh: float) -> tuple[np.ndarr
     if is_red_tree:
         # Red apple orchard: isolate red chromaticity in channel a*
         # out = np.clip((a - 126.0) / (155.0 - 126.0), 0.0, 1.0) * 255.0
-        return a.astype(np.uint8), is_red_tree
+        out = cv2.normalize(a, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+
     else:
         # Green apple orchard: isolate yellow-green chromaticity in channel b*
         # out = np.clip((b - 155.0) / (b_p99_thresh - 155.0), 0.0, 1.0) * 255.0
-        return b.astype(np.uint8), is_red_tree
-
-
-    # TO DO: NORMALIZAR IMAGEN AL RANGO [0, 255]
+        out = cv2.normalize(b, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
     
-    # return out.astype(np.uint8), is_red_tree
+    return out.astype(np.uint8), is_red_tree
 
 def preprocess_image(img_path: str, b_p99_thresh: float) -> np.ndarray:
     """Reads an image from disk and returns its single-channel preprocessed map."""
