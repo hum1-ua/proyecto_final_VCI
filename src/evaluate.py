@@ -3,6 +3,10 @@ import os
 from typing import Callable
 import cv2
 import numpy as np
+from pathlib import Path
+import matplotlib.pyplot as plt
+
+from segment_functions import segment_otsu
 
 TRAIN_DIR = "data/train"
 TEST_DIR = "data/test"
@@ -21,8 +25,6 @@ def compute_metrics(pred_mask: np.ndarray, gt_mask: np.ndarray) -> dict[str, flo
         "precision": float(precision_score(y_true, y_pred, zero_division=0.0)),
         "recall": float(recall_score(y_true, y_pred, zero_division=0.0)),
     }
-
-
 
 def evaluate_method(
     split_dir: str,
@@ -50,6 +52,14 @@ def evaluate_method(
             raise FileNotFoundError(f"Falta imagen o máscara para: {fname}")
 
         pred_mask = segment_fn(img_gray)
+
+        # Crea la carpeta y subcarpetas si no existen
+        ruta = Path(f"results/{method_name}/{fname}")
+        ruta.parent.mkdir(parents=True, exist_ok=True)
+
+        # Guardar el resultado
+        plt.imsave(f"results/{method_name}/{fname}", pred_mask, cmap="gray")
+
         metrics = compute_metrics(pred_mask, gt_mask)
 
         all_ious.append(metrics["iou"])
@@ -81,10 +91,7 @@ def evaluate_method(
     return summary
 
 
-def segment_otsu(img_gray: np.ndarray) -> np.ndarray:
-    """Segmentación binaria mediante umbral automático de Otsu."""
-    _, mask = cv2.threshold(img_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return mask
+
 
 
 if __name__ == "__main__":
