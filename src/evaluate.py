@@ -5,8 +5,9 @@ import cv2
 import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
+import json
 
-from segment_functions import segment_otsu
+from segment_functions import segment_otsu, segment_watershed
 
 TRAIN_DIR = "data/train"
 TEST_DIR = "data/test"
@@ -58,7 +59,7 @@ def evaluate_method(
         ruta.parent.mkdir(parents=True, exist_ok=True)
 
         # Guardar el resultado
-        plt.imsave(f"results/{method_name}/{fname}", pred_mask, cmap="gray")
+        plt.imsave(ruta, pred_mask, cmap="gray")
 
         metrics = compute_metrics(pred_mask, gt_mask)
 
@@ -88,12 +89,21 @@ def evaluate_method(
         f"Prec: {summary['precision']:.4f} | "
         f"Rec: {summary['recall']:.4f}"
     )
+
+    with open(f"results/{method_name}/metrics.json", "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2, ensure_ascii=False)
+
     return summary
-
-
 
 
 
 if __name__ == "__main__":
     print("=== Resultados en TEST ===")
-    evaluate_method(TEST_DIR, segment_otsu, "Otsu")
+
+    segment_functions = {"Otsu": segment_otsu, 
+                         "Watershed": segment_watershed}
+
+    for method, fn in segment_functions.items():
+        evaluate_method(TEST_DIR, fn, method)
+        
+    

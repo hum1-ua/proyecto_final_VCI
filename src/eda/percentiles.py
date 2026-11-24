@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 TRAIN_IMAGES_DIR = "data/train/images"
 PARAMS_PATH = "data/preprocess_params.json"
-PLOT_PATH = "results/train_b99_calibration.png"
+PLOT_PATH = "eda/train_b99_calibration.png"
 
 
 def extract_train_percentiles(
