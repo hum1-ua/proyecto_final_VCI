@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 
 
-
 #OTSU
 def segment_otsu(img_gray: np.ndarray) -> np.ndarray:
     """Segmentación binaria mediante umbral automático de Otsu."""
@@ -10,7 +9,7 @@ def segment_otsu(img_gray: np.ndarray) -> np.ndarray:
     return mask
 
 
-
+#WATERSHED
 def segment_watershed(img_gray: np.ndarray, dist_ratio: float = 0.4) -> np.ndarray:
     """Segmentación binaria mediante el algoritmo Watershed"""
     _, thresh = cv2.threshold(img_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -35,3 +34,9 @@ def segment_watershed(img_gray: np.ndarray, dist_ratio: float = 0.4) -> np.ndarr
 
     # markers == 1 es fondo, markers == -1 son fronteras, > 1 son manzanas
     return np.where(markers > 1, 255, 0).astype(np.uint8)
+
+
+
+# TO DO: GMM, KMEANS, MEAN SHIFT CLUSTERING
+# FUNCION QUE RECIBA LA IMAGEN PREPROCESADA Y DEVUELVA LA MASCARA DE PREDICCIÓN USANDO LOS HIPERPARÁMETROS ÓPTIMOS
+# LUEGO ESTAS FUNCIONES SE USAN EN evaluate.py COMO UN PIPELINE COMÚN
